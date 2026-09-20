@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Facebook Ad Assistant",
+  "version": "1.0",
+  "description": "پنل جانبی برای کپی متن و کشیدن تصاویر تبلیغاتی",
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "clipboardWrite"
+  ],
+  "host_permissions": [
+    "http://localhost:8080/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_title": "باز کردن پنل تبلیغات"
+  }
+}

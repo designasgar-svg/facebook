@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>مدیریت و فیلتر هوشمند گروه‌های فیسبوک</title>
+    <style>
+        body { font-family: Tahoma, sans-serif; background: #f4f7f6; margin: 0; padding: 20px; direction: rtl; }
+        .container { max-width: 1050px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; font-size: 22px; text-align: center; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], select, textarea { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        button { background: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .btn-success { background: #28a745; }
+        .btn-success:hover { background: #218838; }
+        .btn-warning { background: #ffc107; color: #212529; }
+        .btn-warning:hover { background: #e0a800; }
+        .btn-secondary { background: #6c757d; }
+        .btn-secondary:hover { background: #5a6268; }
+        .row { display: flex; gap: 10px; align-items: flex-end; }
+        .toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+        .bulk-box { background: #e9ecef; padding: 15px; border-radius: 6px; margin-bottom: 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .bulk-box input { flex: 1; min-width: 200px; }
+        .section-box { border: 2px dashed #ccc; padding: 15px; border-radius: 8px; margin-bottom: 25px; background: #fafafa; }
+        .section-box.reviewed { border-color: #28a745; background: #f4f9f4; }
+        .section-title { font-size: 18px; font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+        .group-card { background: #fff; border: 1px solid #ddd; padding: 15px; border-radius: 6px; margin-bottom: 10px; position: relative; }
+        .group-index { background: #6c757d; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin-left: 10px; font-weight: bold; }
+        .group-title { font-weight: bold; color: #0056b3; font-size: 16px; text-decoration: none; }
+        .group-title:hover { text-decoration: underline; }
+        .group-desc { color: #555; font-size: 14px; margin-top: 5px; line-height: 1.5; }
+        .btn-danger { background: #dc3545; }
+        .btn-danger:hover { background: #c82333; }
+        .actions { margin-top: 10px; display: flex; justify-content: space-between; align-items: center; }
+
+        /* استایل‌های منوی کلیک راست */
+        #contextMenu {
+            display: none;
+            position: absolute;
+            background: white;
+            border: 1px solid #ccc;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+            border-radius: 6px;
+            z-index: 2000;
+            min-width: 180px;
+            padding: 5px 0;
+        }
+        .context-menu-item {
+            padding: 8px 15px;
+            cursor: pointer;
+            font-size: 13px;
+            color: #333;
+        }
+        .context-menu-item:hover {
+            background: #007bff;
+            color: white;
+        }
+        .context-menu-header {
+            padding: 5px 15px;
+            font-weight: bold;
+            font-size: 12px;
+            color: #888;
+            border-bottom: 1px solid #eee;
+            margin-bottom: 4px;
+        }
+
+        /* استایل پیام‌های محوشونده (Toast Notification) */
+        #toastNotification {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #333;
+            color: #fff;
+            padding: 12px 20px;
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            z-index: 9999;
+            font-size: 14px;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+            transform: translateY(20px);
+            pointer-events: none;
+        }
+        #toastNotification.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>سیستم هوشمند مدیریت و پالایش گروه‌های فیسبوک</h1>
+    
+    <!-- انتخاب یا ایجاد دسته‌بندی -->
+    <div class="form-group">
+        <label>انتخاب دسته‌بندی موجود یا ایجاد دسته‌بندی جدید:</label>
+        <div class="row">
+            <select id="categorySelect" onchange="onCategorySelected()">
+                <option value="">-- انتخاب دسته‌بندی --</option>
+            </select>
+            <input type="text" id="newCategoryInput" placeholder="یا نام دسته جدید (مثلاً: romania_cnc)">
+            <button class="btn-success" onclick="createNewCategory()">ایجاد / انتخاب دسته</button>
+        </div>
+    </div>
+
+    <!-- کلمات کلیدی -->
+    <div class="form-group">
+        <label>کلمات کلیدی جستجو برای دسته: <span id="currentCategoryLabel" style="color:#007bff;">(انتخاب نشده)</span></label>
+        <div class="row">
+            <input type="text" id="includeInput" placeholder="کلمات کلیدی را وارد کنید...">
+            <button class="btn-success" onclick="saveKeywords()">ذخیره کلیدواژه‌ها</button>
+        </div>
+    </div>
+
+    <!-- نوارهای ابزار و دکمه‌ها -->
+    <div class="toolbar" style="margin-top: 15px;">
+        <button onclick="startSearch()" style="flex: 1; padding: 12px; font-size: 15px;">🔍 شروع جستجوی جدید</button>
+        <button class="btn-warning" onclick="openExportModal()">📤 اکسپورت برای هوش مصنوعی</button>
+        <button class="btn-secondary" onclick="undoLastBlock()">↩️ بازگرداندن آخرین حذف (Undo)</button>
+    </div>
+
+    <div id="loading" style="display:none; text-align:center; color:#007bff; font-weight:bold; margin: 15px 0;">در حال جستجو و دریافت گروه‌ها... لطفا صبور باشید.</div>
+    <!-- بخش اضافه کردن دستی لینک به گروه‌های مفید -->
+    <div class="section-box reviewed" style="border-style: solid; background: #eef9ee;">
+        <div class="section-title">
+            <span>➕ افزودن دستی لینک به گروه‌های مفید</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+            <input type="text" id="manualTitleInput" placeholder="عنوان گروه (اختیاری)">
+            <input type="text" id="manualUrlInput" placeholder="لینک فیسبوک گروه (URL را اینجا وارد کنید...)">
+            <textarea id="manualDescInput" placeholder="توضیحات کوتاه (اختیاری)" rows="2"></textarea>
+            <button class="btn-success" onclick="addManualGroupToReviewed()">افزودن به گروه‌های مفید</button>
+        </div>
+    </div>
+    <!-- بخش اول: گروه‌های جدید و بررسی‌نشده -->
+    <div class="section-box">
+        <div class="section-title">
+            <span>🔴 گروه‌های جدید و بررسی‌نشده (<span id="unreviewedCount">0</span>)</span>
+            <button class="btn-success" style="font-size: 13px; padding: 5px 10px;" onclick="moveToReviewed()">✅ انتقال باقی‌مانده‌ها به گروه‌های مفید</button>
+        </div>
+        
+        <!-- بخش بلاک دسته‌جمعی برای هوش مصنوعی -->
+        <div class="bulk-box">
+            <strong>بلاک دسته‌جمعی (خروجی AI):</strong>
+            <input type="text" id="bulkInput" placeholder="مثلاً: 1, 3, 5 یا 2-4">
+            <button class="btn-danger" onclick="bulkBlock()">حذف موارد نامرتبط</button>
+        </div>
+
+        <div id="unreviewedContainer"></div>
+    </div>
+
+    <!-- بخش دوم: گروه‌های مفید و بررسی‌شده -->
+    <div class="section-box reviewed">
+        <div class="section-title">
+            <span>🟢 گروه‌های مفید و بررسی‌شده (<span id="reviewedCount">0</span>)</span>
+        </div>
+        <div id="reviewedContainer"></div>
+    </div>
+</div>
+
+<!-- Modal / Hidden Box برای خروجی هوش مصنوعی -->
+<div id="exportModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; justify-content:center; align-items:center;">
+    <div style="background:white; padding:20px; border-radius:8px; width:80%; max-width:600px; max-height:80vh; overflow-y:auto;">
+        <h3>متن آماده برای ارسال به هوش مصنوعی</h3>
+        <p style="font-size: 13px; color: #666;">این متن را کپی کرده و به هوش مصنوعی بدهید تا شماره گروه‌های نامرتبط را به شما بگوید:</p>
+        <textarea id="exportTextarea" rows="10" style="font-family: monospace; font-size: 12px;"></textarea>
+        <div style="margin-top: 15px; display:flex; justify-content: flex-end; gap: 10px;">
+            <button class="btn-success" onclick="copyExportText()">کپی در کلیپ‌بورد</button>
+            <button class="btn-secondary" onclick="closeExportModal()">بستن</button>
+        </div>
+    </div>
+</div>
+
+<!-- منوی کلیک راست سفارشی -->
+<div id="contextMenu">
+    <div class="context-menu-header">ارسال به کتگوری دیگر:</div>
+    <div id="contextMenuCategories"></div>
+</div>
+
+<!-- المان پیام محوشونده (Toast) -->
+<div id="toastNotification"></div>
+
+<script>
+    let activeCategory = "";
+    let currentUnreviewed = [];
+    let currentReviewed = [];
+    let selectedGroupForAction = null;
+
+    // تابع نمایش پیام محوشونده خودکار
+    function showToast(message, duration = 3000) {
+        const toast = document.getElementById('toastNotification');
+        toast.innerText = message;
+        toast.classList.add('show');
+        
+        setTimeout(() => {
+            toast.classList.remove('show');
+        }, duration);
+    }
+
+    // بستن منوی کلیک راست با کلیک معمولی در صفحه
+    document.addEventListener('click', function() {
+        document.getElementById('contextMenu').style.display = 'none';
+    });
+
+    // تابع مدیریت کلیک راست روی کارت‌های بررسی‌شده
+    function setupContextMenu(cardElement, group) {
+        cardElement.addEventListener('contextmenu', async function(e) {
+            e.preventDefault();
+            
+            selectedGroupForAction = group;
+            const menu = document.getElementById('contextMenu');
+            const container = document.getElementById('contextMenuCategories');
+            container.innerHTML = '';
+
+            try {
+                const response = await fetch('/get-countries');
+                const data = await response.json();
+                const otherCategories = data.countries.filter(c => c.toLowerCase() !== activeCategory.toLowerCase());
+
+                if (otherCategories.length === 0) {
+                    container.innerHTML = '<div style="padding: 8px 15px; font-size:12px; color:#888;">دسته‌بندی دیگری وجود ندارد</div>';
+                } else {
+                    otherCategories.forEach(cat => {
+                        const item = document.createElement('div');
+                        item.className = 'context-menu-item';
+                        item.innerText = cat;
+                        item.onclick = function() {
+                            moveGroupToAnotherCategory(cat);
+                        };
+                        container.appendChild(item);
+                    });
+                }
+
+                menu.style.display = 'block';
+                menu.style.left = `${e.pageX}px`;
+                menu.style.top = `${e.pageY}px`;
+            } catch (err) {
+                console.error('خطا در بارگذاری دسته‌بندی‌ها برای منو');
+            }
+        });
+    }
+
+    // تابع ارسال درخواست انتقال به بک‌اند بدون نمایش alert
+    async function moveGroupToAnotherCategory(targetCategory) {
+        if (!selectedGroupForAction) return;
+        try {
+            const response = await fetch(`/move-group-to-category?url=${encodeURIComponent(selectedGroupForAction.url)}&from_category=${encodeURIComponent(activeCategory)}&to_category=${encodeURIComponent(targetCategory)}`);
+            const data = await response.json();
+            if (data.status === 'success') {
+                showToast(`گروه با موفقیت به دسته‌بندی "${targetCategory}" منتقل شد!`);
+                await loadCategoryDataCompletely();
+            }
+        } catch (err) {
+            showToast('خطا در انتقال گروه به دسته‌بندی دیگر');
+        }
+    }
+
+    async function loadCategoriesList() {
+        try {
+            const response = await fetch('/get-countries');
+            const data = await response.json();
+            const select = document.getElementById('categorySelect');
+            select.innerHTML = '<option value="">-- انتخاب دسته‌بندی --</option>';
+            data.countries.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c;
+                opt.innerText = c;
+                select.appendChild(opt);
+            });
+        } catch (err) {
+            console.error('خطا در دریافت دسته‌بندی‌ها');
+        }
+    }
+
+    async function onCategorySelected() {
+        const select = document.getElementById('categorySelect');
+        const cat = select.value;
+        if (!cat) return;
+
+        document.getElementById('newCategoryInput').value = '';
+        activeCategory = cat;
+        document.getElementById('currentCategoryLabel').innerText = `(${cat})`;
+        await loadCategoryDataCompletely();
+    }
+
+    async function createNewCategory() {
+        const val = document.getElementById('newCategoryInput').value.trim();
+        if (!val) {
+            showToast('لطفاً نام دسته‌بندی را وارد کنید.');
+            return;
+        }
+        activeCategory = val.toLowerCase();
+        document.getElementById('currentCategoryLabel').innerText = `(${activeCategory})`;
+        document.getElementById('categorySelect').value = '';
+        document.getElementById('includeInput').value = '';
+        
+        await saveKeywords();
+        await loadCategoriesList();
+        await loadCategoryDataCompletely();
+        showToast(`دسته‌بندی "${activeCategory}" ایجاد شد!`);
+    }
+
+    async function loadCategoryDataCompletely() {
+        if (!activeCategory) return;
+        try {
+            const response = await fetch(`/get-data?category=${encodeURIComponent(activeCategory)}`);
+            const data = await response.json();
+            document.getElementById('includeInput').value = data.keywords.join(', ');
+            currentUnreviewed = data.unreviewed || [];
+            currentReviewed = data.reviewed || [];
+            renderLists();
+        } catch (err) {
+            console.error('خطا در بارگذاری اطلاعات دسته');
+        }
+    }
+
+    async function saveKeywords() {
+        if (!activeCategory) {
+            showToast('ابتدا یک دسته‌بندی انتخاب یا ایجاد کنید.');
+            return;
+        }
+        const keywords = document.getElementById('includeInput').value;
+        try {
+            await fetch(`/save-keywords?category=${encodeURIComponent(activeCategory)}&keywords=${encodeURIComponent(keywords)}`);
+            showToast('کلیدواژه‌ها ذخیره شدند!');
+        } catch (err) {
+            showToast('خطا در ذخیره کلیدواژه‌ها');
+        }
+    }
+
+    async function startSearch() {
+        if (!activeCategory) {
+            showToast('ابتدا یک دسته‌بندی انتخاب یا ایجاد کنید.');
+            return;
+        }
+        const include = document.getElementById('includeInput').value;
+        const loading = document.getElementById('loading');
+        loading.style.display = 'block';
+
+        try {
+            const response = await fetch(`/search?category=${encodeURIComponent(activeCategory)}&include=${encodeURIComponent(include)}`);
+            const data = await response.json();
+            currentUnreviewed = data.unreviewed || [];
+            currentReviewed = data.reviewed || [];
+            renderLists();
+            showToast('جستجو به پایان رسید.');
+        } catch (err) {
+            showToast('خطا در جستجو!');
+        } finally {
+            loading.style.display = 'none';
+        }
+    }
+    async function addManualGroupToReviewed() {
+        const urlInput = document.getElementById('manualUrlInput');
+        const titleInput = document.getElementById('manualTitleInput');
+        const descInput = document.getElementById('manualDescInput');
+
+        const url = urlInput.value.trim();
+        const name = titleInput.value.trim() || 'گروه دستی';
+        const description = descInput.value.trim() || 'توسط کاربر به صورت دستی اضافه شده است.';
+
+        if (!url) {
+            showToast('لطفاً لینک گروه را وارد کنید.');
+            return;
+        }
+
+        if (!activeCategory) {
+            showToast('ابتدا یک دسته‌بندی انتخاب کنید.');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/add-manual-group?category=${encodeURIComponent(activeCategory)}&url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}&description=${encodeURIComponent(description)}`);
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                urlInput.value = '';
+                titleInput.value = '';
+                descInput.value = '';
+
+                await loadCategoryDataCompletely();
+                showToast('لینک مورد نظر با موفقیت به گروه‌های مفید اضافه شد!');
+            } else {
+                showToast(data.message || 'خطا در ثبت لینک');
+            }
+        } catch (err) {
+            console.error("Manual Add Error:", err);
+            showToast('خطا در ارتباط با سرور برای ثبت دستی لینک');
+        }
+    }
+    function renderLists() {
+        const unrevContainer = document.getElementById('unreviewedContainer');
+        document.getElementById('unreviewedCount').innerText = currentUnreviewed.length;
+        unrevContainer.innerHTML = '';
+        if (currentUnreviewed.length === 0) {
+            unrevContainer.innerHTML = '<p style="text-align:center; color:#777;">گروه بررسی‌نشده‌ای وجود ندارد.</p>';
+        } else {
+            currentUnreviewed.forEach((group, index) => {
+                const card = document.createElement('div');
+                card.className = 'group-card';
+                card.id = `unrev-card-${index + 1}`;
+                card.innerHTML = `
+                    <div>
+                        <span class="group-index">#${index + 1}</span>
+                        <a href="${group.url}" target="_blank" class="group-title">${group.name || 'بدون عنوان'}</a>
+                    </div>
+                    <div class="group-desc">${group.description || 'توضیحی ثبت نشده است.'}</div>
+                    <div class="actions">
+                        <small style="color: #888; word-break: break-all;">${group.url}</small>
+                        <button class="btn-danger" onclick="blockGroup('${group.url}')">حذف</button>
+                    </div>
+                `;
+                unrevContainer.appendChild(card);
+            });
+        }
+
+        const revContainer = document.getElementById('reviewedContainer');
+        document.getElementById('reviewedCount').innerText = currentReviewed.length;
+        revContainer.innerHTML = '';
+        if (currentReviewed.length === 0) {
+            revContainer.innerHTML = '<p style="text-align:center; color:#777;">هنوز گروه مفیدی به این بخش منتقل نشده است.</p>';
+        } else {
+            currentReviewed.forEach((group, index) => {
+                const lastPostedText = group.last_posted ? `آخرین ارسال: ${group.last_posted}` : 'هنوز پستی ثبت نشده است';
+                const card = document.createElement('div');
+                card.className = 'group-card';
+                card.innerHTML = `
+                    <div>
+                        <span class="group-index" style="background:#28a745;">M-${index + 1}</span>
+                        <a href="${group.url}" target="_blank" class="group-title">${group.name || 'بدون عنوان'}</a>
+                    </div>
+                    <div class="group-desc">${group.description || 'توضیحی ثبت نشده است.'}</div>
+                    <div style="margin-top: 8px; font-size: 13px; font-weight: bold; color: ${group.last_posted ? '#28a745' : '#888'};">
+                        📌 ${lastPostedText}
+                    </div>
+                    <div class="actions">
+                        <small style="color: #888; word-break: break-all;">${group.url}</small>
+                        <div style="display: flex; gap: 5px;">
+                            <button class="btn-success" style="padding: 5px 10px; font-size: 12px;" onclick="updatePostDate('${group.url}')">📅 ثبت ارسال امروز</button>
+                            <button class="btn-danger" onclick="blockGroup('${group.url}')">حذف</button>
+                        </div>
+                    </div>
+                `;
+                
+                setupContextMenu(card, group);
+                revContainer.appendChild(card);
+            });
+        }
+    }
+
+    async function blockGroup(url) {
+        try {
+            await fetch(`/block?url=${encodeURIComponent(url)}&category=${encodeURIComponent(activeCategory)}`);
+            await loadCategoryDataCompletely();
+            showToast('گروه حذف شد.');
+        } catch (err) {
+            showToast('خطا در حذف گروه');
+        }
+    }
+
+    async function undoLastBlock() {
+        try {
+            const response = await fetch('/undo');
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                const groupName = data.restored?.name || 'گروه';
+                showToast(`گروه "${groupName}" با موفقیت بازگردانده شد!`);
+                await loadCategoryDataCompletely();
+            } else if (data.status === 'empty') {
+                showToast(data.message || 'هیچ موردی برای بازگرداندن نیست.');
+            } else {
+                showToast('خطا در انجام عملیات بازگردانی.');
+            }
+        } catch (err) {
+            console.error("Undo Error:", err);
+            showToast('خطا در ارتباط با سرور برای عملیات Undo');
+        }
+    }
+
+    async function updatePostDate(url) {
+        try {
+            const response = await fetch(`/update-post-date?category=${encodeURIComponent(activeCategory)}&url=${encodeURIComponent(url)}`);
+            const data = await response.json();
+            if (data.status === 'success') {
+                await loadCategoryDataCompletely();
+                showToast('تاریخ ارسال امروز ثبت شد.');
+            }
+        } catch (err) {
+            showToast('خطا در ثبت تاریخ ارسال');
+        }
+    }
+
+    async function bulkBlock() {
+        const inputVal = document.getElementById('bulkInput').value;
+        if (!inputVal.trim()) {
+            showToast('لطفاً شماره‌ها را وارد کنید (مثلاً 1, 3, 5)');
+            return;
+        }
+
+        const indices = inputVal.split(/[\s,\-]+/).map(n => parseInt(n.trim())).filter(n => !isNaN(n));
+        if (indices.length === 0) return;
+
+        if (!confirm(`آیا از حذف گروه‌های با شماره‌های [${indices.join(', ')}] مطمئن هستید؟`)) return;
+
+        indices.sort((a, b) => b - a);
+        for (const idx of indices) {
+            const groupObj = currentUnreviewed[idx - 1];
+            if (groupObj && groupObj.url) {
+                await fetch(`/block?url=${encodeURIComponent(groupObj.url)}&category=${encodeURIComponent(activeCategory)}`);
+            }
+        }
+        document.getElementById('bulkInput').value = '';
+        await loadCategoryDataCompletely();
+        showToast('موارد انتخاب‌شده حذف شدند!');
+    }
+
+    async function moveToReviewed() {
+        if (currentUnreviewed.length === 0) {
+            showToast('گروه بررسی‌نشده‌ای برای انتقال وجود ندارد.');
+            return;
+        }
+        if (!confirm('آیا مطمئن هستید که می‌خواهید تمام گروه‌های بررسی‌نشده‌ی باقی‌مانده را به بخش گروه‌های مفید منتقل کنید؟')) return;
+
+        try {
+            await fetch(`/move-to-reviewed?category=${encodeURIComponent(activeCategory)}`);
+            await loadCategoryDataCompletely();
+            showToast('گروه‌ها با موفقیت به بخش بررسی‌شده منتقل شدند!');
+        } catch (err) {
+            showToast('خطا در انتقال گروه‌ها');
+        }
+    }
+
+    function openExportModal() {
+        if (currentUnreviewed.length === 0) {
+            showToast('گروهی برای اکسپورت وجود ندارد.');
+            return;
+        }
+        let text = "لطفاً این گروه‌های فیسبوک را بررسی کن و فقط شماره گروه‌هایی که کاملاً نامرتبط یا فاقد ارزش تبلیغاتی هستند را به صورت اعداد با کاما (مثلاً 1, 4, 7) به من اعلام کن.\n\n" +
+        "من طراح سه‌بعدی با جزئیات بالا هستم و به دنبال این موارد می‌گردم:\n" +
+        "- گروه‌های مرتبط با CNC (چوب، **سی‌ان‌سی سنگ**) و پرینتر سه‌بعدی.\n" +
+        "- **گروه‌های منبت‌کاری و حکاکی** را حذف نکن؛ حتی اگر نامی از CNC برده نشده باشد، چون ممکن است کار با CNC در آن‌ها انجام شود.\n" +
+        "- هر گروه دیگری که ممکن است به طراح نیاز داشته باشد.\n\n" +
+        "نکته: رندر، انیمیشن و طراحی مهندسی و گروه های خرید و فروش تجهیزات یا چوب مد نظر من نیست.\n\n";
+
+        currentUnreviewed.forEach((g, i) => {
+            text += `#${i + 1}\nTitle: ${g.name}\nDesc: ${g.description}\nURL: ${g.url}\n-------------------\n`;
+        });
+        document.getElementById('exportTextarea').value = text;
+        document.getElementById('exportModal').style.display = 'flex';
+    }
+
+    function closeExportModal() {
+        document.getElementById('exportModal').style.display = 'none';
+    }
+
+    function copyExportText() {
+        const textarea = document.getElementById('exportTextarea');
+        textarea.select();
+        document.execCommand('copy');
+        showToast('متن با موفقیت در کلیپ‌بورد کپی شد!');
+    }
+
+    window.onload = function() {
+        loadCategoriesList();
+    };
+</script>
+</body>
+</html>
