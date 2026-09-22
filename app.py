@@ -7,13 +7,8 @@ import os
 import json
 import html
 from datetime import datetime
-
-import urllib.request
-import urllib.parse
-import html
-import re
-
 import csv
+from ddgs import DDGS
 
 PORT = 8080
 
@@ -113,8 +108,6 @@ def load_category_data(category):
 
     return unreviewed, reviewed
 
-import csv
-
 def save_category_data(category, unreviewed, reviewed):
     files = get_category_files(category)
     with open(files["unreviewed_json"], "w", encoding="utf-8") as f:
@@ -123,7 +116,7 @@ def save_category_data(category, unreviewed, reviewed):
     with open(files["reviewed_json"], "w", encoding="utf-8") as f:
         json.dump(reviewed, f, ensure_ascii=False, indent=2)
 
-    # ایجاد فایل خروجی CSV بدون نیاز به pandas و با کتابخانه پیش‌فرض پایتون
+    # ساخت فایل خروجی CSV با کتابخانه داخلی و سبک csv پایتون
     all_rows = []
     for item in reviewed:
         all_rows.append({
@@ -179,48 +172,19 @@ def extract_group_slug(url):
 
 class SearchAnalyzer:
     def __init__(self):
-        pass
+        self.ddgs = DDGS()
 
     def search(self, query, max_results=30, retries=3):
         for attempt in range(retries):
             try:
-                print(f"    [SEARCH ENGINE] 🔍 Querying DuckDuckGo HTML (Attempt {attempt+1}): '{query}'")
-                url = "https://html.duckduckgo.com/html/"
-                data = urllib.parse.urlencode({'q': query}).encode('utf-8')
-                req = urllib.request.Request(
-                    url, 
-                    data=data, 
-                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-                )
-                
-                with urllib.request.urlopen(req, timeout=10) as response:
-                    html_content = response.read().decode('utf-8')
-                
-                results = []
-                match_urls = re.findall(r'class="result__url"[^>]*href="([^"]+)"', html_content)
-                match_titles = re.findall(r'class="result__a"[^>]*>(.*?)</a>', html_content, re.DOTALL)
-                match_snippets = re.findall(r'class="result__snippet"[^>]*>(.*?)</a>', html_content, re.DOTALL)
-                
-                for i in range(min(len(match_urls), max_results)):
-                    u = match_urls[i]
-                    if 'uddg=' in u:
-                        parsed_u = urllib.parse.parse_qs(urllib.parse.urlparse(u).query)
-                        if 'uddg' in parsed_u:
-                            u = parsed_u['uddg'][0]
-                    
-                    t = re.sub(r'<.*?>', '', match_titles[i]) if i < len(match_titles) else ""
-                    s = re.sub(r'<.*?>', '', match_snippets[i]) if i < len(match_snippets) else ""
-                    
-                    results.append({
-                        "href": u,
-                        "title": html.unescape(t.strip()),
-                        "body": html.unescape(s.strip())
-                    })
+                print(f"    [SEARCH ENGINE] 🔍 Querying DuckDuckGo (Attempt {attempt+1}): '{query}'")
+                # اضافه کردن timeout به جستجو
+                results = list(self.ddgs.text(query, max_results=max_results))
                 return results
             except Exception as e:
                 print(f"    [SEARCH ENGINE] ❌ Search error (attempt {attempt+1}): {e}")
                 if attempt < retries - 1:
-                    time.sleep(2)
+                    time.sleep(2)  # مکث کوتاه قبل از تلاش مجدد
                 else:
                     return []
         return []
