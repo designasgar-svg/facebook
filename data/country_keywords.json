@@ -35,7 +35,9 @@
     "stampa 3D",
     "modelli STL"
   ],
-  "spain": [],
+  "spain": [
+    "cnc madera"
+  ],
   "englishcnc": [],
   "germany": [
     "cnc holz",
