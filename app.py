@@ -7,8 +7,13 @@ import os
 import json
 import html
 from datetime import datetime
-import pandas as pd
-from ddgs import DDGS
+
+import urllib.request
+import urllib.parse
+import html
+import re
+
+import csv
 
 PORT = 8080
 
@@ -108,6 +113,8 @@ def load_category_data(category):
 
     return unreviewed, reviewed
 
+import csv
+
 def save_category_data(category, unreviewed, reviewed):
     files = get_category_files(category)
     with open(files["unreviewed_json"], "w", encoding="utf-8") as f:
@@ -116,7 +123,7 @@ def save_category_data(category, unreviewed, reviewed):
     with open(files["reviewed_json"], "w", encoding="utf-8") as f:
         json.dump(reviewed, f, ensure_ascii=False, indent=2)
 
-    # ایجاد فایل خروجی نهایی CSV از مجموع بررسی‌شده‌ها در پوشه دسته‌بندی‌ها
+    # ایجاد فایل خروجی CSV بدون نیاز به pandas و با کتابخانه پیش‌فرض پایتون
     all_rows = []
     for item in reviewed:
         all_rows.append({
@@ -126,10 +133,17 @@ def save_category_data(category, unreviewed, reviewed):
             "category": category,
             "status": "reviewed"
         })
+    
     if all_rows:
-        df = pd.DataFrame(all_rows)
-        df.to_csv(files["csv"], index=False, encoding="utf-8-sig")
-
+        try:
+            with open(files["csv"], "w", encoding="utf-8-sig", newline="") as csvfile:
+                fieldnames = ["name", "url", "description", "category", "status"]
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                writer.writeheader()
+                for row in all_rows:
+                    writer.writerow(row)
+        except Exception as e:
+            print(f"Error saving CSV: {e}")
 # ============================================================
 # GENERAL HELPERS
 # ============================================================
@@ -165,71 +179,116 @@ def extract_group_slug(url):
 
 class SearchAnalyzer:
     def __init__(self):
-        self.ddgs = DDGS()
+        pass
 
     def search(self, query, max_results=30, retries=3):
         for attempt in range(retries):
             try:
-                print(f"    [SEARCH ENGINE] 🔍 Querying DuckDuckGo (Attempt {attempt+1}): '{query}'")
-                # اضافه کردن timeout به جستجو
-                results = list(self.ddgs.text(query, max_results=max_results))
+                print(f"    [SEARCH ENGINE] 🔍 Querying DuckDuckGo HTML (Attempt {attempt+1}): '{query}'")
+                url = "https://html.duckduckgo.com/html/"
+                data = urllib.parse.urlencode({'q': query}).encode('utf-8')
+                req = urllib.request.Request(
+                    url, 
+                    data=data, 
+                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+                )
+                
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    html_content = response.read().decode('utf-8')
+                
+                results = []
+                match_urls = re.findall(r'class="result__url"[^>]*href="([^"]+)"', html_content)
+                match_titles = re.findall(r'class="result__a"[^>]*>(.*?)</a>', html_content, re.DOTALL)
+                match_snippets = re.findall(r'class="result__snippet"[^>]*>(.*?)</a>', html_content, re.DOTALL)
+                
+                for i in range(min(len(match_urls), max_results)):
+                    u = match_urls[i]
+                    if 'uddg=' in u:
+                        parsed_u = urllib.parse.parse_qs(urllib.parse.urlparse(u).query)
+                        if 'uddg' in parsed_u:
+                            u = parsed_u['uddg'][0]
+                    
+                    t = re.sub(r'<.*?>', '', match_titles[i]) if i < len(match_titles) else ""
+                    s = re.sub(r'<.*?>', '', match_snippets[i]) if i < len(match_snippets) else ""
+                    
+                    results.append({
+                        "href": u,
+                        "title": html.unescape(t.strip()),
+                        "body": html.unescape(s.strip())
+                    })
                 return results
             except Exception as e:
                 print(f"    [SEARCH ENGINE] ❌ Search error (attempt {attempt+1}): {e}")
                 if attempt < retries - 1:
-                    time.sleep(2)  # مکث کوتاه قبل از تلاش مجدد
+                    time.sleep(2)
                 else:
                     return []
         return []
 
 def search_groups_logic(include_kws, category):
-    blacklist = load_blacklist()
-    unreviewed, reviewed = load_category_data(category)
-    
-    existing_urls = {normalize_url(item["url"]) for item in unreviewed + reviewed}
-    
-    discovered = {}
-    searcher = SearchAnalyzer()
+        blacklist = load_blacklist()
+        
+        # تغییر کلیدی: جمع‌آوری تمام لینک‌های موجود در *تمامی* دسته‌بندی‌ها
+        existing_urls = set()
+        if os.path.exists(CATEGORIES_DIR):
+            for filename in os.listdir(CATEGORIES_DIR):
+                if filename.endswith(".json"):
+                    file_path = os.path.join(CATEGORIES_DIR, filename)
+                    try:
+                        with open(file_path, "r", encoding="utf-8") as f:
+                            items = json.load(f)
+                            if isinstance(items, list):
+                                for item in items:
+                                    if "url" in item:
+                                        existing_urls.add(normalize_url(item["url"]))
+                    except Exception:
+                        pass
 
-    queries = [f"site:facebook.com/groups/ {kw.strip()}" for kw in include_kws if kw.strip()]
+        # بارگذاری داده‌های دسته‌بندی فعلی برای اضافه کردن نتایج جدید به آن
+        unreviewed, reviewed = load_category_data(category)
+        
+        discovered = {}
+        searcher = SearchAnalyzer()
 
-    for query in queries:
-        print(f"\n[DISCOVERY QUERY] {query}")
-        results = searcher.search(query, 30)
-        for result in results:
-            url = result.get("href") or result.get("link") or ""
-            if not url or "facebook.com/groups" not in url.lower():
-                continue
-            slug = extract_group_slug(url)
-            if not slug or slug.lower() in ["search", "posts", "user", "sharer", "profile", "feed", "discover"]:
-                continue
-            
-            clean_url = normalize_url(url)
-            if clean_url in blacklist or clean_url in existing_urls:
-                continue
+        queries = [f"site:facebook.com/groups/ {kw.strip()}" for kw in include_kws if kw.strip()]
 
-            if clean_url not in discovered:
-                discovered[clean_url] = {
-                    "title": clean_text(result.get("title", "")),
-                    "snippet": clean_text(result.get("body") or result.get("snippet") or "")
-                }
-        time.sleep(0.2)
+        for query in queries:
+            print(f"\n[DISCOVERY QUERY] {query}")
+            results = searcher.search(query, 30)
+            for result in results:
+                url = result.get("href") or result.get("link") or ""
+                if not url or "facebook.com/groups" not in url.lower():
+                    continue
+                slug = extract_group_slug(url)
+                if not slug or slug.lower() in ["search", "posts", "user", "sharer", "profile", "feed", "discover"]:
+                    continue
+                
+                clean_url = normalize_url(url)
+                # بررسی اینکه آیا لینک در لیست سیاه یا هر دسته‌بندی دیگری وجود دارد یا خیر
+                if clean_url in blacklist or clean_url in existing_urls:
+                    continue
 
-    new_items = []
-    for url, info in discovered.items():
-        new_items.append({
-            "url": url,
-            "slug": extract_group_slug(url),
-            "name": info["title"] or "Not Found",
-            "description": info["snippet"] or "Not Found",
-            "category": category,
-            "analyzed_at": datetime.utcnow().isoformat()
-        })
+                if clean_url not in discovered:
+                    discovered[clean_url] = {
+                        "title": clean_text(result.get("title", "")),
+                        "snippet": clean_text(result.get("body") or result.get("snippet") or "")
+                    }
+            time.sleep(0.2)
 
-    unreviewed.extend(new_items)
-    save_category_data(category, unreviewed, reviewed)
-    return {"unreviewed": unreviewed, "reviewed": reviewed}
+        new_items = []
+        for url, info in discovered.items():
+            new_items.append({
+                "url": url,
+                "slug": extract_group_slug(url),
+                "name": info["title"] or "Not Found",
+                "description": info["snippet"] or "Not Found",
+                "category": category,
+                "analyzed_at": datetime.utcnow().isoformat()
+            })
 
+        unreviewed.extend(new_items)
+        save_category_data(category, unreviewed, reviewed)
+        return {"unreviewed": unreviewed, "reviewed": reviewed}
 # ============================================================
 # HTTP SERVER & API
 # ============================================================
